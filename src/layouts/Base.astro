@@ -1,0 +1,4 @@
+---
+const { title, description = 'Free public study materials.' } = Astro.props;
+---
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width"/><title>{title}</title><meta name="description" content={description}/><link rel="stylesheet" href="/styles.css"/></head><body><a class="skip" href="#content">Skip to content</a><header><nav aria-label="Main"><a class="brand" href="/">FreeEDU</a><a href="/subjects">Subjects</a><a href="/search">Search</a></nav></header><main id="content"><slot /></main><footer><p>Free public study-material library. Metadata only is indexed; PDF body search is planned for a future version.</p></footer></body></html>

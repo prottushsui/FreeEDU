@@ -1,0 +1,32 @@
+{
+  "name": "freeedu",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "typecheck": "tsc --noEmit",
+    "validate": "tsx scripts/validate.ts",
+    "reconcile": "tsx scripts/ingest.ts reconcile --storage .storage/r2",
+    "build": "npm run validate && astro build && pagefind --site dist --output-subdir pagefind",
+    "budget": "tsx scripts/budget.ts",
+    "headers": "tsx scripts/generate-cloudflare.ts",
+    "test": "node --test tests/*.test.js",
+    "ci": "npm run typecheck && npm run validate && npm test && npm run build && npm run budget && npm run headers",
+    "validate:local": "node -e \"import('./src/lib/catalog.js').then(m=>{m.validateCatalog();console.log('catalog validation passed')})\""
+  },
+  "dependencies": {
+    "@astrojs/check": "latest",
+    "astro": "latest",
+    "commander": "latest",
+    "proper-lockfile": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "pagefind": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}
