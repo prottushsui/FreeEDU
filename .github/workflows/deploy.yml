@@ -1,0 +1,39 @@
+name: CI and Deploy
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, deployments: write }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: npm ci
+      - name: Schema validation
+        run: npm run validate
+      - name: Relationship validation
+        run: npm run validate
+      - name: Storage validation
+        run: npm run reconcile
+      - name: Build Astro site and Pagefind index
+        run: npm run build
+      - name: Build/performance budget checks
+        run: npm run budget
+      - name: Generate Cloudflare Pages headers/redirects
+        run: npm run headers
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: pages deploy dist --project-name=${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+      - name: Post-deployment smoke tests
+        run: |
+          test -n "${{ vars.PUBLIC_SITE_URL }}"
+          curl -fsS "${{ vars.PUBLIC_SITE_URL }}/"
+          curl -fsS "${{ vars.PUBLIC_SITE_URL }}/materials/algebra-basics"
+          curl -fsS "${{ vars.PUBLIC_SITE_URL }}/r2/files/${{ vars.KNOWN_PDF_HASH }}.pdf"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "${{ vars.PUBLIC_SITE_URL }}/materials/old-algebra")" = 404
+          curl -fsS "${{ vars.PUBLIC_SITE_URL }}/search"
+          curl -fsSI "${{ vars.PUBLIC_SITE_URL }}/old-math"
+      - name: Post-deployment garbage collection
+        run: npm run ingest -- gc --deployed-manifest deployed-assets.json

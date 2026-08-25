@@ -1,0 +1,4 @@
+---
+import Base from '../../../layouts/Base.astro';import { validateCatalog } from '../../../lib/catalog.js';export function getStaticPaths(){const c=validateCatalog();return c.subjects.map(s=>({params:{slug:s.slug},props:{s,c}}))}const {s,c}=Astro.props;const topics=c.topics.filter(t=>t.subjectId===s.id);
+---
+<Base title={`${s.name} — FreeEDU`} description={s.description}><h1>{s.name}</h1><p>{s.description}</p><h2>Topics</h2><div class="grid">{topics.map(t=><article class="card"><h3><a href={`/topics/${t.slug}`}>{t.title}</a></h3><p>{t.description}</p></article>)}</div></Base>

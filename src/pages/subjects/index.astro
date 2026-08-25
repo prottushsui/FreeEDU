@@ -1,0 +1,4 @@
+---
+import Base from '../../layouts/Base.astro';import { validateCatalog } from '../../lib/catalog.js'; const {subjects}=validateCatalog();
+---
+<Base title="Subjects — FreeEDU"><h1>Subjects</h1><div class="grid">{subjects.map(s=><article class="card"><h2><a href={`/subjects/${s.slug}`}>{s.name}</a></h2><p>{s.description}</p></article>)}</div></Base>
