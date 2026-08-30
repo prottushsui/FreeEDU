@@ -1,0 +1,91 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { loadMaterials, loadTopics, loadSubjects, getAssetById } from '../../lib/catalog';
+
+export async function getStaticPaths() {
+  const materials = loadMaterials().filter(m => m.state === 'published');
+  return materials.map(material => ({
+    params: { slug: material.slug },
+    props: { material }
+  }));
+}
+
+const { material } = Astro.props;
+const topics = loadTopics();
+const topic = topics.find(t => t.id === material.topicId);
+const subject = topic ? loadSubjects().find(s => s.id === topic.subjectId) : null;
+const asset = material.assetId ? getAssetById(material.assetId) : null;
+
+// Generate PDF URL - in production this would be R2 URL
+const pdfUrl = asset ? `/storage/${asset.storageKey}` : null;
+---
+
+<BaseLayout title={material.title} description={material.description}>
+  <div class="container">
+    <nav class="breadcrumb">
+      <a href="/">Home</a> → 
+      <a href="/subjects/">Subjects</a> → 
+      {subject && <><a href={`/subjects/${subject.slug}/`}>{subject.title}</a> → </>}
+      {topic && <><a href={`/topics/${topic.slug}/`}>{topic.title}</a> → </>}
+      <span>{material.title}</span>
+    </nav>
+    
+    <article class="material-article">
+      <header class="material-header">
+        <h1>{material.title}</h1>
+        {material.description && <p class="material-description">{material.description}</p>}
+        
+        <div class="material-meta">
+          {topic && <span class="meta-item"><strong>Topic:</strong> {topic.title}</span>}
+          {subject && <span class="meta-item"><strong>Subject:</strong> {subject.title}</span>}
+          <span class="meta-item"><strong>File type:</strong> PDF</span>
+          {asset && <span class="meta-item"><strong>Size:</strong> {(asset.size / 1024 / 1024).toFixed(2)} MB</span>}
+        </div>
+        
+        {material.tags && material.tags.length > 0 && (
+          <div class="tags">
+            {material.tags.map(tag => <span class="tag">{tag}</span>)}
+          </div>
+        )}
+      </header>
+      
+      <section class="download-section">
+        <h2>Download</h2>
+        {pdfUrl ? (
+          <a href={pdfUrl} class="btn btn-download" download>
+            Download PDF
+          </a>
+        ) : (
+          <div class="error-state">
+            <p>This material is not available for download.</p>
+          </div>
+        )}
+      </section>
+      
+      <section class="related-section">
+        <h2>Related Materials</h2>
+        <p>Browse more materials in the <a href={`/topics/${topic?.slug}/`}>{topic?.title}</a> topic.</p>
+      </section>
+    </article>
+  </div>
+  
+  <style>
+    .breadcrumb { margin-bottom: var(--spacing-lg); color: var(--color-muted); }
+    .breadcrumb a { color: var(--color-primary); }
+    .material-article { max-width: 800px; }
+    .material-header { margin-bottom: var(--spacing-xl); padding-bottom: var(--spacing-lg); border-bottom: 1px solid var(--color-border); }
+    h1 { font-size: 2rem; margin-bottom: var(--spacing-md); }
+    .material-description { color: var(--color-muted); font-size: 1.125rem; margin-bottom: var(--spacing-lg); }
+    .material-meta { display: flex; flex-wrap: wrap; gap: var(--spacing-md); margin-bottom: var(--spacing-md); font-size: 0.875rem; color: var(--color-muted); }
+    .meta-item { background: var(--color-surface); padding: var(--spacing-xs) var(--spacing-sm); border-radius: var(--radius-sm); }
+    .tags { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+    .tag { background: var(--color-surface); color: var(--color-muted); padding: var(--spacing-xs) var(--spacing-sm); border-radius: var(--radius-sm); font-size: 0.75rem; }
+    .download-section { margin-bottom: var(--spacing-xl); padding: var(--spacing-lg); background: var(--color-surface); border-radius: var(--radius-lg); }
+    .download-section h2 { margin-bottom: var(--spacing-md); }
+    .btn-download { display: inline-block; padding: var(--spacing-md) var(--spacing-xl); background: var(--color-primary); color: white; border-radius: var(--radius-md); text-decoration: none; font-weight: 600; transition: all 0.2s; }
+    .btn-download:hover { background: var(--color-primary-hover); text-decoration: none; transform: translateY(-2px); }
+    .error-state { padding: var(--spacing-md); background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); color: var(--color-error); }
+    .related-section { padding-top: var(--spacing-lg); border-top: 1px solid var(--color-border); }
+    .related-section h2 { margin-bottom: var(--spacing-sm); }
+  </style>
+</BaseLayout>

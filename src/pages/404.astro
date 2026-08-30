@@ -1,0 +1,32 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+Astro.response.status = 404;
+---
+
+<BaseLayout title="Page Not Found">
+  <div class="container">
+    <div class="error-page">
+      <h1>404</h1>
+      <h2>Page Not Found</h2>
+      <p>The page you are looking for does not exist or has been moved.</p>
+      <div class="actions">
+        <a href="/" class="btn btn-primary">Go Home</a>
+        <a href="/subjects/" class="btn btn-secondary">Browse Subjects</a>
+      </div>
+    </div>
+  </div>
+  
+  <style>
+    .error-page { text-align: center; padding: var(--spacing-2xl) 0; max-width: 500px; margin: 0 auto; }
+    h1 { font-size: 6rem; color: var(--color-primary); margin-bottom: 0; line-height: 1; }
+    h2 { font-size: 1.75rem; margin-bottom: var(--spacing-md); }
+    p { color: var(--color-muted); margin-bottom: var(--spacing-xl); }
+    .actions { display: flex; gap: var(--spacing-md); justify-content: center; flex-wrap: wrap; }
+    .btn { padding: var(--spacing-md) var(--spacing-xl); border-radius: var(--radius-md); text-decoration: none; font-weight: 600; }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover { background: var(--color-primary-hover); text-decoration: none; }
+    .btn-secondary { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+    .btn-secondary:hover { background: var(--color-border); text-decoration: none; }
+  </style>
+</BaseLayout>

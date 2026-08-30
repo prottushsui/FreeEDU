@@ -1,0 +1,54 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+// Pagefind will be loaded client-side
+---
+
+<BaseLayout title="Search" description="Search study materials by title, description, subject, and tags">
+  <div class="container">
+    <h1>Search Materials</h1>
+    <p class="page-intro">Find study materials across all subjects and topics.</p>
+    
+    <div id="search-container">
+      <div id="search"></div>
+      <div id="results"></div>
+    </div>
+    
+    <noscript>
+      <div class="empty-state">
+        <p>Search requires JavaScript to be enabled.</p>
+      </div>
+    </noscript>
+  </div>
+  
+  <script>
+    // Load Pagefind client-side
+    async function initSearch() {
+      try {
+        const pagefind = await import('/pagefind/pagefind.js');
+        
+        const searchOptions = {
+          element: "#search",
+          showImages: false,
+          showEmptyFilters: true,
+        };
+        
+        new pagefind.PagefindUI(searchOptions);
+      } catch (e) {
+        console.error('Failed to load Pagefind:', e);
+        document.getElementById('results').innerHTML = 
+          '<div class="error-state"><p>Search is currently unavailable. Please try again later.</p></div>';
+      }
+    }
+    
+    initSearch();
+  </script>
+  
+  <style>
+    .container h1 { font-size: 2rem; margin-bottom: var(--spacing-md); }
+    .page-intro { color: var(--color-muted); margin-bottom: var(--spacing-xl); font-size: 1.125rem; }
+    #search-container { max-width: 800px; }
+    .empty-state { text-align: center; padding: var(--spacing-xl); background: var(--color-surface); border-radius: var(--radius-md); color: var(--color-muted); }
+    .error-state { padding: var(--spacing-md); background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); color: var(--color-error); }
+  </style>
+</BaseLayout>

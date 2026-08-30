@@ -1,0 +1,209 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { loadSubjects, loadTopics, getMaterialsBySubject } from '../../lib/catalog';
+import { getEntry } from 'astro:content';
+
+export async function getStaticPaths() {
+  const subjects = loadSubjects();
+  return subjects.map(subject => ({
+    params: { slug: subject.slug },
+    props: { subject }
+  }));
+}
+
+const { subject } = Astro.props;
+const topics = loadTopics().filter(t => t.subjectId === subject.id);
+const materials = getMaterialsBySubject(subject.id, topics);
+---
+
+<BaseLayout title={subject.title} description={subject.description}>
+  <div class="container">
+    <nav class="breadcrumb">
+      <a href="/">Home</a> → <a href="/subjects/">Subjects</a> → <span>{subject.title}</span>
+    </nav>
+    
+    <header class="subject-header">
+      <h1>{subject.title}</h1>
+      {subject.description && <p class="subject-description">{subject.description}</p>}
+    </header>
+    
+    <section class="topics-section">
+      <h2>Topics</h2>
+      {topics.length === 0 ? (
+        <div class="empty-state">
+          <p>No topics in this subject yet.</p>
+        </div>
+      ) : (
+        <div class="topic-grid">
+          {topics.map(topic => {
+            const topicMaterials = materials.filter(m => m.topicId === topic.id);
+            return (
+              <article class="topic-card">
+                <h3><a href={`/topics/${topic.slug}/`}>{topic.title}</a></h3>
+                {topic.description && <p>{topic.description}</p>}
+                <div class="topic-meta">
+                  <span class="material-count">{topicMaterials.length} material{topicMaterials.length !== 1 ? 's' : ''}</span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+    
+    <section class="materials-section">
+      <h2>All Materials</h2>
+      {materials.length === 0 ? (
+        <div class="empty-state">
+          <p>No study materials available yet.</p>
+        </div>
+      ) : (
+        <div class="material-list">
+          {materials.map(material => (
+            <article class="material-card">
+              <h3><a href={`/materials/${material.slug}/`}>{material.title}</a></h3>
+              {material.description && <p>{material.description}</p>}
+              {material.tags && material.tags.length > 0 && (
+                <div class="tags">
+                  {material.tags.map(tag => <span class="tag">{tag}</span>)}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  </div>
+  
+  <style>
+    .breadcrumb {
+      margin-bottom: var(--spacing-lg);
+      color: var(--color-muted);
+    }
+    
+    .breadcrumb a {
+      color: var(--color-primary);
+    }
+    
+    .subject-header {
+      margin-bottom: var(--spacing-xl);
+      padding-bottom: var(--spacing-lg);
+      border-bottom: 1px solid var(--color-border);
+    }
+    
+    .subject-header h1 {
+      font-size: 2rem;
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .subject-description {
+      color: var(--color-muted);
+      font-size: 1.125rem;
+    }
+    
+    .topics-section, .materials-section {
+      margin-bottom: var(--spacing-2xl);
+    }
+    
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: var(--spacing-lg);
+    }
+    
+    .topic-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: var(--spacing-lg);
+    }
+    
+    .topic-card {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-lg);
+      transition: all 0.2s;
+    }
+    
+    .topic-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--color-primary);
+    }
+    
+    .topic-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .topic-card h3 a {
+      color: var(--color-text);
+    }
+    
+    .topic-card h3 a:hover {
+      color: var(--color-primary);
+    }
+    
+    .topic-card p {
+      color: var(--color-muted);
+      margin-bottom: var(--spacing-md);
+    }
+    
+    .topic-meta {
+      display: flex;
+      gap: var(--spacing-md);
+      font-size: 0.875rem;
+      color: var(--color-muted);
+    }
+    
+    .material-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-md);
+    }
+    
+    .material-card {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-lg);
+    }
+    
+    .material-card h3 {
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .material-card h3 a {
+      color: var(--color-text);
+    }
+    
+    .material-card h3 a:hover {
+      color: var(--color-primary);
+    }
+    
+    .material-card p {
+      color: var(--color-muted);
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .tags {
+      display: flex;
+      gap: var(--spacing-xs);
+      flex-wrap: wrap;
+    }
+    
+    .tag {
+      background: var(--color-surface);
+      color: var(--color-muted);
+      padding: var(--spacing-xs) var(--spacing-sm);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: var(--spacing-xl);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      color: var(--color-muted);
+    }
+  </style>
+</BaseLayout>
