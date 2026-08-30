@@ -1,0 +1,82 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { loadTopics, loadSubjects, getMaterialsByTopic } from '../../lib/catalog';
+
+export async function getStaticPaths() {
+  const topics = loadTopics();
+  return topics.map(topic => ({
+    params: { slug: topic.slug },
+    props: { topic }
+  }));
+}
+
+const { topic } = Astro.props;
+const subjects = loadSubjects();
+const subject = subjects.find(s => s.id === topic.subjectId);
+const materials = getMaterialsByTopic(topic.id);
+
+if (!subject) {
+  return Astro.redirect('/subjects/');
+}
+---
+
+<BaseLayout title={topic.title} description={topic.description}>
+  <div class="container">
+    <nav class="breadcrumb">
+      <a href="/">Home</a> → <a href="/subjects/">Subjects</a> → 
+      <a href={`/subjects/${subject.slug}/`}>{subject.title}</a> → <span>{topic.title}</span>
+    </nav>
+    
+    <header class="topic-header">
+      <h1>{topic.title}</h1>
+      {topic.description && <p class="topic-description">{topic.description}</p>}
+    </header>
+    
+    <section class="materials-section">
+      <h2>Study Materials</h2>
+      {materials.length === 0 ? (
+        <div class="empty-state">
+          <p>No study materials available for this topic yet.</p>
+        </div>
+      ) : (
+        <div class="material-list">
+          {materials.map(material => (
+            <article class="material-card">
+              <div class="material-header">
+                <h3><a href={`/materials/${material.slug}/`}>{material.title}</a></h3>
+                <a href={`/materials/${material.slug}/`} class="btn btn-small">View</a>
+              </div>
+              {material.description && <p>{material.description}</p>}
+              {material.tags && material.tags.length > 0 && (
+                <div class="tags">
+                  {material.tags.map(tag => <span class="tag">{tag}</span>)}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  </div>
+  
+  <style>
+    .breadcrumb { margin-bottom: var(--spacing-lg); color: var(--color-muted); }
+    .breadcrumb a { color: var(--color-primary); }
+    .topic-header { margin-bottom: var(--spacing-xl); padding-bottom: var(--spacing-lg); border-bottom: 1px solid var(--color-border); }
+    .topic-header h1 { font-size: 2rem; margin-bottom: var(--spacing-sm); }
+    .topic-description { color: var(--color-muted); font-size: 1.125rem; }
+    h2 { font-size: 1.5rem; margin-bottom: var(--spacing-lg); }
+    .material-list { display: flex; flex-direction: column; gap: var(--spacing-md); }
+    .material-card { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--spacing-lg); }
+    .material-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--spacing-sm); gap: var(--spacing-md); flex-wrap: wrap; }
+    .material-header h3 { font-size: 1.25rem; margin: 0; }
+    .material-header h3 a { color: var(--color-text); }
+    .material-header h3 a:hover { color: var(--color-primary); }
+    .material-card p { color: var(--color-muted); margin-bottom: var(--spacing-sm); }
+    .tags { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+    .tag { background: var(--color-surface); color: var(--color-muted); padding: var(--spacing-xs) var(--spacing-sm); border-radius: var(--radius-sm); font-size: 0.75rem; }
+    .btn-small { padding: var(--spacing-xs) var(--spacing-md); background: var(--color-primary); color: white; border-radius: var(--radius-sm); text-decoration: none; font-weight: 500; }
+    .btn-small:hover { background: var(--color-primary-hover); text-decoration: none; }
+    .empty-state { text-align: center; padding: var(--spacing-xl); background: var(--color-surface); border-radius: var(--radius-md); color: var(--color-muted); }
+  </style>
+</BaseLayout>
