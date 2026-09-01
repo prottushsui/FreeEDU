@@ -1,0 +1,6 @@
+---
+import Base from '../../layouts/Base.astro';
+import { validateCatalog } from '../../lib/catalog.ts';
+const { subjects } = validateCatalog();
+---
+<Base title="Subjects — FreeEDU"><h1>Subjects</h1><div class="grid">{subjects.map((subject) => <article class="card"><h2><a href={`/subjects/${subject.slug}`}>{subject.name}</a></h2><p>{subject.description}</p></article>)}</div></Base>

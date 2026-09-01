@@ -1,0 +1,19 @@
+---
+import Base from '../../../../layouts/Base.astro';
+import { validateCatalog } from '../../../../lib/catalog.ts';
+export function getStaticPaths() {
+  const catalog = validateCatalog();
+  return catalog.topics.flatMap((topic) => {
+    const count = catalog.materials.filter((material) => material.status === 'published' && material.topicIds.includes(topic.id)).length;
+    return Array.from({ length: Math.max(1, Math.ceil(count / 6)) }, (_, index) => ({ params: { slug: topic.slug, page: String(index + 1) }, props: { topic, catalog, page: index + 1 } }));
+  });
+}
+const { topic, catalog, page } = Astro.props;
+const materials = catalog.materials.filter((material) => material.status === 'published' && material.topicIds.includes(topic.id));
+const entries = materials.slice((page - 1) * 6, page * 6);
+---
+<Base title={`${topic.title} materials — FreeEDU`} description={topic.description}>
+  <h1>{topic.title}</h1><p>{topic.description}</p>
+  {entries.length ? <div class="grid">{entries.map((material) => <article class="card"><h2><a href={`/materials/${material.slug}`}>{material.title}</a></h2><p>{material.description}</p></article>)}</div> : <p class="empty">No published materials are available for this topic yet.</p>}
+  <nav aria-label="Topic pages">{page > 1 && <a href={`/topics/${topic.slug}/page/${page - 1}`}>Previous</a>} {materials.length > page * 6 && <a href={`/topics/${topic.slug}/page/${page + 1}`}>Next</a>}</nav>
+</Base>

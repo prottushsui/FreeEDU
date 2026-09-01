@@ -1,0 +1,36 @@
+{
+  "name": "freeedu",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "packageManager": "npm@11.4.2",
+  "engines": { "node": ">=24.15.0 <25", "npm": "11.4.2" },
+  "scripts": {
+    "dev": "astro dev",
+    "typecheck": "tsc --noEmit",
+    "validate": "tsx scripts/validate.ts",
+    "reconcile": "tsx scripts/ingest.ts reconcile --storage .storage/r2",
+    "ingest": "tsx scripts/ingest.ts",
+    "manifest": "tsx scripts/generate-manifest.ts",
+    "r2:upload": "tsx scripts/r2-deploy.ts upload",
+    "r2:verify": "tsx scripts/r2-deploy.ts verify",
+    "r2:reconcile": "tsx scripts/r2-deploy.ts reconcile",
+    "build": "npm run validate && astro build && pagefind --site dist --output-subdir pagefind && npm run manifest && npm run headers",
+    "budget": "tsx scripts/budget.ts",
+    "check:output": "tsx scripts/check-output.ts",
+    "headers": "tsx scripts/generate-cloudflare.ts",
+    "test": "tsx --test tests/**/*.test.ts",
+    "ci": "npm run typecheck && npm test && npm run build && npm run budget && npm run check:output"
+  },
+  "dependencies": {
+    "astro": "5.18.2",
+    "commander": "11.1.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "pagefind": "1.5.2",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  }
+}

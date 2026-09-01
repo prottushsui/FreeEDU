@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const required = ['index.html', 'subjects/index.html', 'subjects/mathematics/index.html', 'topics/algebra/index.html', 'topics/algebra/page/1/index.html', 'materials/algebra-basics/index.html', 'search/index.html', 'pagefind/pagefind.js', '_headers', '_redirects'];
+for (const relative of required) if (!fs.existsSync(path.join('dist', relative))) throw new Error(`missing generated output: ${relative}`);
+const material = fs.readFileSync('dist/materials/algebra-basics/index.html', 'utf8');
+if (!material.includes('/r2/files/a8ea9f63d81e0927b1935af65c5c4ae12be654d6d1d57907772491a65a562aa5.pdf')) throw new Error('material page lacks content-addressed PDF URL');
+const output = fs.readdirSync('dist', { recursive: true }).map(String).join('\n');
+if (output.includes('old-algebra') || output.includes('biology-lab-notes')) throw new Error('draft or deleted material was generated publicly');
+if (!fs.readFileSync('dist/_redirects', 'utf8').includes('/old-math /subjects/mathematics 301')) throw new Error('validated redirect is missing');
+console.log('static route, Pagefind asset, redirect, and published-content checks passed');

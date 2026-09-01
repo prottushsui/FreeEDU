@@ -1,0 +1,27 @@
+---
+import Base from '../../layouts/Base.astro';
+import { assetUrl, validateCatalog } from '../../lib/catalog.ts';
+
+export function getStaticPaths() {
+  const catalog = validateCatalog();
+  return catalog.materials.filter((material) => material.status === 'published').map((material) => {
+    const asset = catalog.assets.find((entry) => entry.id === material.assetId);
+    if (!asset) throw new Error(`published material ${material.id} has no asset`);
+    return { params: { slug: material.slug }, props: { material, catalog, asset } };
+  });
+}
+const { material, catalog, asset } = Astro.props;
+const subject = catalog.subjects.find((entry) => entry.id === material.subjectId);
+const topics = catalog.topics.filter((entry) => material.topicIds.includes(entry.id));
+if (!subject) throw new Error(`missing subject for ${material.id}`);
+const pagefindMeta = `title:${material.title},description:${material.description},subject:${subject.name},topics:${topics.map((topic) => topic.title).join(' ')},tags:${material.tags.join(' ')},file type:${material.fileType}`;
+---
+<Base title={`${material.title} — FreeEDU`} description={material.description}>
+  <article class="card" data-pagefind-body data-pagefind-meta={pagefindMeta}>
+    <p class="meta"><a href={`/subjects/${subject.slug}`}>{subject.name}</a> · {topics.map((topic) => <a href={`/topics/${topic.slug}/page/1`}>{topic.title} </a>)}</p>
+    <h1>{material.title}</h1>
+    <p>{material.description}</p>
+    <p class="tags">{material.tags.map((tag) => <span>{tag}</span>)}</p>
+    <a class="button" href={assetUrl(asset)} download>Download PDF</a>
+  </article>
+</Base>

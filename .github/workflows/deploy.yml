@@ -1,0 +1,73 @@
+name: Validate and deploy FreeEDU
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24.15.0, cache: npm }
+      - name: Install deterministic dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit and local integration tests
+        run: npm test
+      - name: Catalog and local fixture integrity validation
+        run: npm run validate
+      - name: Local fixture reconciliation
+        run: npm run reconcile
+      - name: Static Astro build and mandatory Pagefind index
+        run: npm run build
+      - name: Build budget and generated output checks
+        run: npm run budget && npm run check:output
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with: { name: freeedu-dist, path: dist }
+      - name: Upload deployment manifest
+        uses: actions/upload-artifact@v4
+        with: { name: deployment-manifest, path: deployed-assets.json }
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, deployments: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24.15.0, cache: npm }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: freeedu-dist, path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: deployment-manifest, path: . }
+      - name: Install pinned Wrangler for production transport
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: 3.114.13
+          command: --version
+      - name: Upload and verify manifest-referenced R2 objects before Pages deploy
+        run: npm run r2:upload -- --bucket "${{ vars.R2_BUCKET_NAME }}" --manifest deployed-assets.json --source .storage/r2
+      - name: Deploy Cloudflare Pages only after R2 verification
+        run: wrangler pages deploy dist --project-name "${{ vars.CLOUDFLARE_PAGES_PROJECT }}" --branch main
+        env: { CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }} }
+      - name: Post-deployment smoke tests and R2 byte verification
+        env: { PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}, R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME }} }
+        run: |
+          test -n "$PUBLIC_SITE_URL"
+          curl --fail --silent --show-error "$PUBLIC_SITE_URL/" >/dev/null
+          curl --fail --silent --show-error "$PUBLIC_SITE_URL/materials/algebra-basics" >/dev/null
+          curl --fail --silent --show-error "$PUBLIC_SITE_URL/r2/files/a8ea9f63d81e0927b1935af65c5c4ae12be654d6d1d57907772491a65a562aa5.pdf" >/dev/null
+          curl --fail --silent --show-error "$PUBLIC_SITE_URL/search" >/dev/null
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "$PUBLIC_SITE_URL/materials/old-algebra")" = 404
+          curl --fail --silent --show-error --location "$PUBLIC_SITE_URL/old-math" >/dev/null
+          npm run r2:verify -- --bucket "$R2_BUCKET_NAME" --manifest deployed-assets.json
+      - name: Post-deployment GC candidate report (non-destructive)
+        run: echo 'Destructive R2 archival is intentionally a separately reviewed catalog transaction; it is not run by CI.'

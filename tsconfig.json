@@ -1,0 +1,1 @@
+{"extends":"astro/tsconfigs/strict","compilerOptions":{"moduleResolution":"bundler","allowImportingTsExtensions":true,"types":["node"]},"include":["src","scripts","tests","functions","astro.config.mjs"]}

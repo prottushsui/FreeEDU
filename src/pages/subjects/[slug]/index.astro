@@ -1,0 +1,15 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { validateCatalog } from '../../../lib/catalog.ts';
+export function getStaticPaths() {
+  const catalog = validateCatalog();
+  return catalog.subjects.map((subject) => ({ params: { slug: subject.slug }, props: { subject, catalog } }));
+}
+const { subject, catalog } = Astro.props;
+const topics = catalog.topics.filter((topic) => topic.subjectId === subject.id);
+---
+<Base title={`${subject.name} — FreeEDU`} description={subject.description}>
+  <h1>{subject.name}</h1><p>{subject.description}</p>
+  <h2>Topics</h2>
+  <div class="grid">{topics.map((topic) => <article class="card"><h3><a href={`/topics/${topic.slug}`}>{topic.title}</a></h3><p>{topic.description}</p></article>)}</div>
+</Base>
