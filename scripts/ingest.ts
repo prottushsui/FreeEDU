@@ -9,13 +9,14 @@
  *   ingest gc (garbage collection)
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs';
-import { join } from 'path';
-import { createHash } from 'crypto';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { loadMaterials, loadAssets, saveMaterials, saveAssets, getAssetById } from '../src/lib/catalog';
-import type { Material, Asset } from '../src/lib/schemas';
+import { loadMaterials, loadAssets, saveMaterials, saveAssets, getAssetById, loadTopics } from '../src/lib/catalog';
+import type { Material, Asset, Topic } from '../src/lib/schemas';
 import { materialSchema, assetSchema } from '../src/lib/schemas';
+import { validateSlug } from '../src/lib/schemas';
 
 // Configuration
 const MAX_PDF_SIZE = 100 * 1024 * 1024; // 100MB
@@ -56,7 +57,7 @@ function releaseLock(): void {
 // PDF validation using magic bytes
 function validatePDF(filePath: string): { valid: boolean; error?: string; size?: number } {
   try {
-    const stats = require('fs').statSync(filePath);
+    const stats = statSync(filePath);
     
     if (stats.size > MAX_PDF_SIZE) {
       return { valid: false, error: `File exceeds maximum size of ${MAX_PDF_SIZE / 1024 / 1024}MB` };
@@ -66,10 +67,10 @@ function validatePDF(filePath: string): { valid: boolean; error?: string; size?:
       return { valid: false, error: 'File too small to be a valid PDF' };
     }
     
-    const fd = require('fs').openSync(filePath, 'r');
+    const fd = openSync(filePath, 'r');
     const buffer = Buffer.alloc(4);
-    require('fs').readSync(fd, buffer, 0, 4, 0);
-    require('fs').closeSync(fd);
+    readSync(fd, buffer, 0, 4, 0);
+    closeSync(fd);
     
     if (!buffer.equals(PDF_MAGIC)) {
       return { valid: false, error: 'File does not have valid PDF magic bytes' };
@@ -98,7 +99,8 @@ function getStorageKey(hash: string): string {
 function uploadToStorage(filePath: string, storageKey: string): boolean {
   try {
     const destPath = join(STORAGE_DIR, storageKey);
-    mkdirSync(STORAGE_DIR, { recursive: true });
+    // Ensure the destination directory exists (including parent directories)
+    mkdirSync(dirname(destPath), { recursive: true });
     const content = readFileSync(filePath);
     writeFileSync(destPath, content);
     
@@ -128,7 +130,21 @@ function findAssetByChecksum(checksum: string): Asset | undefined {
 async function addMaterial(filePath: string, title: string, topicId: string, description?: string, tags?: string[]): Promise<void> {
   console.log('Adding new material...');
   
-  // Step 1: Validate file
+  // Step 1: Validate command arguments
+  if (!topicId) {
+    console.error('Missing topic ID');
+    process.exit(1);
+  }
+  
+  // Step 2: Validate topic exists
+  const topics = loadTopics();
+  const topic = topics.find(t => t.id === topicId);
+  if (!topic) {
+    console.error('Topic not found:', topicId);
+    process.exit(1);
+  }
+  
+  // Step 3: Validate file
   const validation = validatePDF(filePath);
   if (!validation.valid) {
     console.error('Validation failed:', validation.error);
@@ -137,18 +153,59 @@ async function addMaterial(filePath: string, title: string, topicId: string, des
   
   console.log('✓ File validated as PDF');
   
-  // Step 2: Calculate SHA-256
+  // Step 4: Calculate SHA-256
   const checksum = calculateSHA256(filePath);
   console.log('✓ SHA-256 calculated:', checksum);
   
-  // Step 3: Check for existing asset with same content
+  // Step 5: Generate and validate slug
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  if (!validateSlug(slug)) {
+    console.error('Invalid generated slug:', slug);
+    process.exit(1);
+  }
+  
+  // Step 6: Check for duplicate slug
+  const existingMaterials = loadMaterials();
+  const existingWithSlug = existingMaterials.find(m => m.slug === slug && m.state !== 'deleted');
+  if (existingWithSlug) {
+    console.error('Duplicate slug detected:', slug);
+    process.exit(1);
+  }
+  
+  // Step 7: Check for existing asset with same content
   let asset = findAssetByChecksum(checksum);
   const storageKey = getStorageKey(checksum);
   
-  if (asset) {
+  // Handle archived asset reuse - must reactivate archived assets
+  if (asset && asset.status === 'archived') {
+    console.log('Found archived asset with matching checksum:', asset.id);
+    // Reactivate the archived asset
+    asset.status = 'active';
+    // Move file from archive back to active location if needed
+    const archivePath = join(STORAGE_DIR, asset.storageKey);
+    const activePath = join(STORAGE_DIR, storageKey);
+    
+    if (existsSync(archivePath)) {
+      mkdirSync(dirname(activePath), { recursive: true });
+      writeFileSync(activePath, readFileSync(archivePath));
+      rmSync(archivePath);
+      asset.storageKey = storageKey;
+    }
+    
+    // Save reactivated asset
+    const assets = loadAssets();
+    const idx = assets.findIndex(a => a.id === asset!.id);
+    if (idx >= 0) {
+      assets[idx] = asset!;
+      saveAssets(assets);
+    }
+    console.log('✓ Archived asset reactivated:', asset.id);
+  }
+  
+  if (asset && asset.status === 'active') {
     console.log('✓ Reusing existing asset:', asset.id);
-  } else {
-    // Step 4: Upload new asset
+  } else if (!asset) {
+    // Step 8: Upload new asset
     console.log('Uploading new asset...');
     if (!uploadToStorage(filePath, storageKey)) {
       console.error('Upload failed');
@@ -156,7 +213,7 @@ async function addMaterial(filePath: string, title: string, topicId: string, des
     }
     console.log('✓ Asset uploaded to', storageKey);
     
-    // Step 5: Create asset record
+    // Step 9: Create asset record
     const now = new Date().toISOString();
     asset = {
       id: checksum,
@@ -178,13 +235,13 @@ async function addMaterial(filePath: string, title: string, topicId: string, des
     console.log('✓ Asset record created in catalog');
   }
   
-  // Step 6: Create material record
+  // Step 10: Create material record
   const materials = loadMaterials();
   const now = new Date().toISOString();
   
   const material: Material = {
     id: uuidv4(),
-    slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+    slug,
     topicId,
     title,
     description,
@@ -202,11 +259,32 @@ async function addMaterial(filePath: string, title: string, topicId: string, des
     materialSchema.parse(material);
   } catch (e) {
     console.error('Invalid material schema:', (e as Error).message);
+    // Clean up orphaned asset if material validation fails
+    if (asset && asset.materialIds.length === 0) {
+      console.log('Cleaning up orphaned asset due to material validation failure');
+      const assets = loadAssets();
+      const filtered = assets.filter(a => a.id !== asset!.id);
+      saveAssets(filtered);
+      const assetPath = join(STORAGE_DIR, asset.storageKey);
+      if (existsSync(assetPath)) {
+        rmSync(assetPath);
+      }
+    }
     process.exit(1);
   }
   
   materials.push(material);
   saveMaterials(materials);
+  
+  // Update asset's materialIds
+  const assets = loadAssets();
+  const assetIdx = assets.findIndex(a => a.id === asset!.id);
+  if (assetIdx >= 0) {
+    if (!assets[assetIdx].materialIds.includes(material.id)) {
+      assets[assetIdx].materialIds.push(material.id);
+      saveAssets(assets);
+    }
+  }
   
   console.log('✓ Material created:', material.id);
   console.log('  Slug:', material.slug);
@@ -252,7 +330,34 @@ async function replaceMaterial(materialId: string, filePath: string): Promise<vo
   
   // Upload new asset if not exists
   let asset = findAssetByChecksum(newChecksum);
-  if (!asset) {
+  
+  // Handle archived asset reuse - must reactivate archived assets
+  if (asset && asset.status === 'archived') {
+    console.log('Found archived asset with matching checksum:', asset.id);
+    // Reactivate the archived asset
+    asset.status = 'active';
+    // Move file from archive back to active location if needed
+    const archivePath = join(STORAGE_DIR, asset.storageKey);
+    const activePath = join(STORAGE_DIR, newStorageKey);
+    
+    if (existsSync(archivePath)) {
+      mkdirSync(dirname(activePath), { recursive: true });
+      writeFileSync(activePath, readFileSync(archivePath));
+      rmSync(archivePath);
+      asset.storageKey = newStorageKey;
+    }
+    
+    // Save reactivated asset
+    const assets = loadAssets();
+    const idx = assets.findIndex(a => a.id === asset!.id);
+    if (idx >= 0) {
+      assets[idx] = asset!;
+      saveAssets(assets);
+    }
+    console.log('✓ Archived asset reactivated:', asset.id);
+  }
+  
+  if (!asset || asset.status !== 'active') {
     console.log('Uploading new asset...');
     if (!uploadToStorage(filePath, newStorageKey)) {
       console.error('Upload failed');
@@ -286,6 +391,23 @@ async function replaceMaterial(materialId: string, filePath: string): Promise<vo
   saveMaterials(materials);
   console.log('✓ Material updated to use new asset');
   
+  // Update asset's materialIds - remove old asset reference, add new
+  const assets = loadAssets();
+  
+  // Remove material from old asset's materialIds
+  const oldAssetIdx = assets.findIndex(a => a.id === oldAssetId);
+  if (oldAssetIdx >= 0) {
+    assets[oldAssetIdx].materialIds = assets[oldAssetIdx].materialIds.filter(id => id !== materialId);
+  }
+  
+  // Add material to new asset's materialIds
+  const newAssetIdx = assets.findIndex(a => a.id === newChecksum);
+  if (newAssetIdx >= 0 && !assets[newAssetIdx].materialIds.includes(materialId)) {
+    assets[newAssetIdx].materialIds.push(materialId);
+  }
+  
+  saveAssets(assets);
+  
   // Note: Old asset is preserved until GC after successful deployment
   console.log('ℹ️  Old asset', oldAssetId, 'preserved for safe GC after deployment');
 }
@@ -307,6 +429,17 @@ function deleteMaterial(materialId: string): void {
   material.updatedAt = new Date().toISOString();
   
   saveMaterials(materials);
+  
+  // Update asset's materialIds - remove this material
+  if (material.assetId) {
+    const assets = loadAssets();
+    const assetIdx = assets.findIndex(a => a.id === material.assetId);
+    if (assetIdx >= 0) {
+      assets[assetIdx].materialIds = assets[assetIdx].materialIds.filter(id => id !== materialId);
+      saveAssets(assets);
+    }
+  }
+  
   console.log('✓ Material marked as deleted:', materialId);
   console.log('ℹ️  Asset preserved - run GC after confirming no other materials reference it');
 }

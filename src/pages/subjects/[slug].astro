@@ -1,7 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { loadSubjects, loadTopics, getMaterialsBySubject } from '../../lib/catalog';
-import { getEntry } from 'astro:content';
 
 export async function getStaticPaths() {
   const subjects = loadSubjects();
