@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, renameSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import type { Subject, Topic, Material, Asset, Redirect } from './schemas';
 import { subjectSchema, topicSchema, materialSchema, assetSchema, redirectSchema } from './schemas';
 
@@ -31,14 +31,38 @@ function writeJsonlFile<T>(filename: string, records: T[]): void {
   const filepath = join(CONTENT_DIR, filename);
   const lines = records.map(r => JSON.stringify(r)).join('\n');
   
-  // Atomic write - write to temp then rename
-  const tempPath = filepath + '.tmp';
-  writeFileSync(tempPath, lines + '\n', 'utf-8');
-  writeFileSync(tempPath + '.bak', readFileSync(tempPath));
-  rmSync(filepath, { force: true });
-  writeFileSync(filepath, readFileSync(tempPath));
-  rmSync(tempPath, { force: true });
-  rmSync(filepath + '.bak', { force: true });
+  // Atomic write using temp file + rename pattern
+  // This ensures the original file remains intact if the write fails
+  const tempPath = filepath + '.tmp.' + process.pid;
+  const backupPath = filepath + '.bak';
+  
+  try {
+    // Write to temporary file first
+    writeFileSync(tempPath, lines + '\n', 'utf-8');
+    
+    // Create backup of original if it exists
+    if (existsSync(filepath)) {
+      renameSync(filepath, backupPath);
+    }
+    
+    // Atomically rename temp to final path
+    renameSync(tempPath, filepath);
+    
+    // Clean up backup on success
+    if (existsSync(backupPath)) {
+      rmSync(backupPath);
+    }
+  } catch (e) {
+    // On failure, restore from backup if available
+    if (existsSync(backupPath) && !existsSync(filepath)) {
+      renameSync(backupPath, filepath);
+    }
+    // Clean up temp file
+    rmSync(tempPath, { force: true });
+    // Clean up backup if restore succeeded
+    rmSync(backupPath, { force: true });
+    throw e;
+  }
 }
 
 // Catalog accessors

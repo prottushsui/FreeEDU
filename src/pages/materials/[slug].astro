@@ -16,7 +16,8 @@ const topic = topics.find(t => t.id === material.topicId);
 const subject = topic ? loadSubjects().find(s => s.id === topic.subjectId) : null;
 const asset = material.assetId ? getAssetById(material.assetId) : null;
 
-// Generate PDF URL - in production this would be R2 URL
+// Generate PDF URL - uses public storage path for local/static builds
+// In production with R2, this would be replaced by the R2 URL
 const pdfUrl = asset ? `/storage/${asset.storageKey}` : null;
 ---
 

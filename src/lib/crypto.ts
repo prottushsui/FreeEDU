@@ -1,5 +1,5 @@
-import { createHash } from 'crypto';
-import { readFileSync } from 'fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 
 // Maximum PDF file size: 100MB
 const MAX_PDF_SIZE = 100 * 1024 * 1024;
@@ -32,7 +32,7 @@ export function calculateSHA256Buffer(buffer: Buffer): string {
  */
 export function validatePDF(filePath: string): { valid: boolean; error?: string } {
   try {
-    const stats = require('fs').statSync(filePath);
+    const stats = statSync(filePath);
     
     // Check file size
     if (stats.size > MAX_PDF_SIZE) {
@@ -44,10 +44,10 @@ export function validatePDF(filePath: string): { valid: boolean; error?: string 
     }
     
     // Read first 4 bytes for magic number check
-    const fd = require('fs').openSync(filePath, 'r');
+    const fd = openSync(filePath, 'r');
     const buffer = Buffer.alloc(4);
-    require('fs').readSync(fd, buffer, 0, 4, 0);
-    require('fs').closeSync(fd);
+    readSync(fd, buffer, 0, 4, 0);
+    closeSync(fd);
     
     // Check for PDF magic bytes
     if (!buffer.equals(PDF_MAGIC)) {
@@ -64,7 +64,7 @@ export function validatePDF(filePath: string): { valid: boolean; error?: string 
  * Get file size in bytes
  */
 export function getFileSize(filePath: string): number {
-  const stats = require('fs').statSync(filePath);
+  const stats = statSync(filePath);
   return stats.size;
 }
 
