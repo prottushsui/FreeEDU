@@ -1,10 +1,4 @@
 ---
-import Base from '../layouts/Base.astro';
-import { validateCatalog } from '../lib/catalog.ts';
-const catalog = validateCatalog();
-const published = catalog.materials.filter((material) => material.status === 'published');
+import Base from '../layouts/Base.astro';import { validateCatalog } from '../lib/catalog.js'; const c=validateCatalog(); const published=c.materials.filter(m=>m.status==='published');
 ---
-<Base title="FreeEDU — Free Study Materials">
-  <section class="hero"><h1>Free study materials for everyone.</h1><p>Browse validated subjects, topics, and content-addressed PDF downloads without accounts or tracking walls.</p><p><a class="button" href="/subjects">Browse subjects</a> <a class="button" href="/search">Search metadata</a></p></section>
-  <h2>Featured materials</h2><div class="grid">{published.map((material) => <article class="card" data-pagefind-ignore><h3><a href={`/materials/${material.slug}`}>{material.title}</a></h3><p>{material.description}</p></article>)}</div>
-</Base>
+<Base title="FreeEDU — Free Study Materials"><section class="hero"><h1>Free study materials for everyone.</h1><p>Browse validated subjects, topics, and content-addressed PDF downloads without accounts or tracking walls.</p><p><a class="button" href="/subjects">Browse subjects</a> <a class="button" href="/search">Search metadata</a></p></section><h2>Featured materials</h2><div class="grid">{published.map(m=><article class="card" data-pagefind-body data-pagefind-meta={`title:${m.title},description:${m.description},tags:${m.tags.join(' ')},file type:${m.fileType}`}><h3><a href={`/materials/${m.slug}`}>{m.title}</a></h3><p>{m.description}</p></article>)}</div></Base>

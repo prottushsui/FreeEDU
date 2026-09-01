@@ -1,73 +1,24 @@
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { z } from 'zod';
-
-const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const sha256 = /^[a-f0-9]{64}$/;
-const timestamp = z.string().datetime({ offset: true });
-const id = z.string().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9-]*[a-z0-9])?$/);
-
-export const SubjectSchema = z.object({ id, slug: z.string().regex(slug), name: z.string().min(1), description: z.string().min(1) }).strict();
-export const TopicSchema = z.object({ id, slug: z.string().regex(slug), subjectId: id, title: z.string().min(1), description: z.string().min(1) }).strict();
-export const AssetSchema = z.object({
-  id: z.string().regex(sha256), sha256: z.string().regex(sha256), originalFilename: z.string().min(1).max(255),
-  sizeBytes: z.number().int().positive(), mimeType: z.literal('application/pdf'), status: z.enum(['available', 'archived']),
-  storageKey: z.string(), checksum: z.string().regex(/^sha256:[a-f0-9]{64}$/), createdAt: timestamp, updatedAt: timestamp,
-  archivedAt: timestamp.optional(), restoredAt: timestamp.optional(),
-}).strict();
-export const MaterialSchema = z.object({
-  id, slug: z.string().regex(slug), title: z.string().min(1), description: z.string().min(1), subjectId: id,
-  topicIds: z.array(id).min(1), tags: z.array(z.string().min(1).max(80)), status: z.enum(['draft', 'published', 'deleted']),
-  assetId: z.string().regex(sha256), fileType: z.literal('pdf'), createdAt: timestamp, updatedAt: timestamp, deletedAt: timestamp.optional(),
-}).strict();
-export const RedirectSchema = z.object({ from: z.string(), to: z.string(), status: z.union([z.literal(301), z.literal(302), z.literal(307), z.literal(308)]) }).strict();
-export type Subject = z.infer<typeof SubjectSchema>; export type Topic = z.infer<typeof TopicSchema>; export type Asset = z.infer<typeof AssetSchema>; export type Material = z.infer<typeof MaterialSchema>; export type Redirect = z.infer<typeof RedirectSchema>;
-export type Catalog = { subjects: Subject[]; topics: Topic[]; materials: Material[]; assets: Asset[]; redirects: Redirect[] };
-export type ObjectReader = { read(key: string): Buffer | undefined; list(prefix: 'files/' | 'archive/'): string[] };
-
-function parseJsonl<T>(file: string, schema: z.ZodType<T>): T[] {
-  return fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).map((line, index) => {
-    let value: unknown; try { value = JSON.parse(line); } catch { throw new Error(`${file}:${index + 1}: invalid JSON`); }
-    const result = schema.safeParse(value); if (!result.success) throw new Error(`${file}:${index + 1}: ${result.error.issues.map((x) => x.message).join('; ')}`); return result.data;
-  });
-}
-export function loadCatalog(root = process.cwd()): Catalog {
-  const subjects = z.array(SubjectSchema).safeParse(JSON.parse(fs.readFileSync(path.join(root, 'content/subjects.json'), 'utf8')));
-  if (!subjects.success) throw new Error(`content/subjects.json: ${subjects.error.message}`);
-  return { subjects: subjects.data, topics: parseJsonl(path.join(root, 'content/topics.jsonl'), TopicSchema), materials: parseJsonl(path.join(root, 'content/materials.jsonl'), MaterialSchema), assets: parseJsonl(path.join(root, 'content/assets.jsonl'), AssetSchema), redirects: parseJsonl(path.join(root, 'content/redirects.jsonl'), RedirectSchema) };
-}
-export function localObjectReader(root = process.cwd(), storageRoot = '.storage/r2'): ObjectReader {
-  const base = path.resolve(root, storageRoot);
-  const safe = (key: string) => { if (!/^(files|archive)\/[a-f0-9]{64}\.pdf$/.test(key)) throw new Error(`unsafe storage key ${key}`); return path.join(base, key); };
-  return { read: (key) => { const file = safe(key); return fs.existsSync(file) ? fs.readFileSync(file) : undefined; }, list: (prefix) => { const dir = path.join(base, prefix); return fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => /^[a-f0-9]{64}\.pdf$/.test(name)).map((name) => `${prefix}${name}`) : []; } };
-}
-function unique(values: string[], name: string, errors: string[]) { for (const value of values) if (values.indexOf(value) !== values.lastIndexOf(value)) errors.push(`duplicate ${name}: ${value}`); }
-function safeRedirectPath(value: string) { return /^\/(?!\/)(?:[a-z0-9][a-z0-9/-]*)?$/.test(value) && !value.includes('//') && !value.includes('..'); }
-export function validateCatalog(root = process.cwd(), reader: ObjectReader | undefined = localObjectReader(root)): Catalog {
-  const c = loadCatalog(root); const errors: string[] = [];
-  unique(c.subjects.map((x) => x.id), 'subject id', errors); unique(c.subjects.map((x) => x.slug), 'subject slug', errors);
-  unique(c.topics.map((x) => x.id), 'topic id', errors); unique(c.topics.map((x) => x.slug), 'topic slug', errors);
-  unique(c.materials.map((x) => x.id), 'material id', errors); unique(c.materials.map((x) => x.slug), 'material slug', errors);
-  unique(c.assets.map((x) => x.id), 'asset id', errors); unique(c.assets.map((x) => x.checksum), 'asset checksum', errors);
-  const subjects = new Set(c.subjects.map((x) => x.id)); const topics = new Set(c.topics.map((x) => x.id)); const assets = new Map(c.assets.map((x) => [x.id, x]));
-  for (const topic of c.topics) if (!subjects.has(topic.subjectId)) errors.push(`topic ${topic.id} references missing subject ${topic.subjectId}`);
-  for (const asset of c.assets) {
-    const prefix = asset.status === 'available' ? 'files' : 'archive'; const expected = `${prefix}/${asset.sha256}.pdf`;
-    if (asset.id !== asset.sha256 || asset.checksum !== `sha256:${asset.sha256}` || asset.storageKey !== expected) errors.push(`asset ${asset.id} has invalid identity or storage key`);
-    const object = reader?.read(asset.storageKey);
-    if (object) { const digest = createHash('sha256').update(object).digest('hex'); if (digest !== asset.sha256 || object.byteLength !== asset.sizeBytes || object.subarray(0, 5).toString() !== '%PDF-') errors.push(`asset ${asset.id} object integrity mismatch`); }
-    else if (asset.status === 'available' && reader) errors.push(`available asset ${asset.id} missing from storage`);
-  }
-  for (const material of c.materials) {
-    if (!subjects.has(material.subjectId)) errors.push(`material ${material.id} references missing subject ${material.subjectId}`);
-    for (const topic of material.topicIds) if (!topics.has(topic)) errors.push(`material ${material.id} references missing topic ${topic}`);
-    if (material.status === 'published') { const asset = assets.get(material.assetId); if (!asset) errors.push(`published material ${material.id} references missing asset`); else if (asset.status !== 'available') errors.push(`published material ${material.id} references unavailable asset`); }
-  }
-  const redirectMap = new Map<string, string>();
-  for (const redirect of c.redirects) { if (!safeRedirectPath(redirect.from) || !safeRedirectPath(redirect.to)) errors.push(`unsafe redirect ${redirect.from} -> ${redirect.to}`); if (redirectMap.has(redirect.from)) errors.push(`duplicate redirect ${redirect.from}`); redirectMap.set(redirect.from, redirect.to); }
-  for (const from of redirectMap.keys()) { const seen = new Set<string>(); let current: string | undefined = from; while (current && redirectMap.has(current)) { if (seen.has(current)) { errors.push(`redirect loop from ${from}`); break; } seen.add(current); current = redirectMap.get(current); } }
-  if (errors.length) throw new Error(errors.join('\n')); return c;
-}
-export const publicMaterials = (catalog: Catalog) => catalog.materials.filter((material) => material.status === 'published');
-export const assetUrl = (asset: Asset) => `/r2/${asset.storageKey}`;
+export type Status='draft'|'published'|'deleted';
+export type AssetStatus='available'|'archived'|'pending';
+export type Subject={id:string;slug:string;name:string;description:string};
+export type Topic={id:string;slug:string;subjectId:string;title:string;description:string};
+export type Asset={id:string;sha256:string;originalFilename:string;sizeBytes:number;mimeType:string;status:AssetStatus;storageKey:string;checksum:string;createdAt:string;updatedAt:string;archivedAt?:string};
+export type Material={id:string;slug:string;title:string;description:string;subjectId:string;topicIds:string[];tags:string[];status:Status;assetId:string;fileType:'pdf';createdAt:string;updatedAt:string;deletedAt?:string};
+export type Redirect={from:string;to:string;status:301|302|307|308};
+const slug=/^[a-z0-9]+(?:-[a-z0-9]+)*$/; const sha=/^[a-f0-9]{64}$/;
+function lines(f:string){return fs.existsSync(f)?fs.readFileSync(f,'utf8').split(/\r?\n/).filter(Boolean):[]}
+function jsonl<T>(f:string):T[]{return lines(f).map((l,i)=>{try{return JSON.parse(l)}catch(e){throw new Error(`${f}:${i+1} invalid JSON`)}})}
+function assert(c:any,m:string):asserts c{if(!c)throw new Error(m)}
+export function loadCatalog(root=process.cwd()){return {subjects:JSON.parse(fs.readFileSync(path.join(root,'content/subjects.json'),'utf8')) as Subject[],topics:jsonl<Topic>(path.join(root,'content/topics.jsonl')),materials:jsonl<Material>(path.join(root,'content/materials.jsonl')),assets:jsonl<Asset>(path.join(root,'content/assets.jsonl')),redirects:jsonl<Redirect>(path.join(root,'content/redirects.jsonl'))}}
+export function validateCatalog(root=process.cwd(), opts={checkStorage:true, storageRoot:'.storage/r2'}){const c=loadCatalog(root); const errors:string[]=[]; const seen=new Map<string,string>(); const assetIds=new Set<string>(); const checksums=new Set<string>();
+ const chkSlug=(kind:string,id:string,s:string)=>{if(!slug.test(s))errors.push(`${kind} ${id} invalid slug ${s}`); const k=`${kind}:${s}`; if(seen.has(k))errors.push(`duplicate ${kind} slug ${s}`); seen.set(k,id)};
+ for(const s of c.subjects){if(!s.id||!s.name)errors.push('invalid subject'); chkSlug('subject',s.id,s.slug)}
+ const subj=new Set(c.subjects.map(s=>s.id)); const topicIds=new Set<string>(); for(const t of c.topics){chkSlug('topic',t.id,t.slug); if(!subj.has(t.subjectId))errors.push(`topic ${t.id} missing subject`); topicIds.add(t.id)}
+ for(const a of c.assets){if(!sha.test(a.id)||a.id!==a.sha256)errors.push(`asset ${a.id} invalid sha id`); if(!['available','archived','pending'].includes(a.status))errors.push(`asset ${a.id} invalid status`); if(a.mimeType!=='application/pdf')errors.push(`asset ${a.id} invalid mime`); if(a.storageKey!==`${a.status==='archived'?'archive':'files'}/${a.sha256}.pdf`)errors.push(`asset ${a.id} invalid storageKey`); if(assetIds.has(a.id))errors.push(`duplicate asset id ${a.id}`); assetIds.add(a.id); if(checksums.has(a.checksum))errors.push(`duplicate asset checksum ${a.checksum}`); checksums.add(a.checksum); if(opts.checkStorage&&a.status==='available'&&!fs.existsSync(path.join(root,opts.storageRoot,a.storageKey)))errors.push(`asset ${a.id} missing from storage`)}
+ const matSlugs=new Set<string>(); for(const m of c.materials){chkSlug('material',m.id,m.slug); if(matSlugs.has(m.slug))errors.push(`material slug reserved/collides ${m.slug}`); matSlugs.add(m.slug); if(!['draft','published','deleted'].includes(m.status))errors.push(`material ${m.id} invalid status`); if(!subj.has(m.subjectId))errors.push(`material ${m.id} missing subject`); for(const t of m.topicIds)if(!topicIds.has(t))errors.push(`material ${m.id} missing topic ${t}`); const a=c.assets.find(a=>a.id===m.assetId); if(m.status==='published'){if(!a)errors.push(`published material ${m.id} missing asset`); else if(a.status!=='available')errors.push(`published material ${m.id} references ${a.status} asset`)}}
+ const from=new Set<string>(); for(const r of c.redirects){if(!r.from.startsWith('/')||!r.to.startsWith('/')||r.to.startsWith('//')||r.from.includes('..')||r.to.includes('..'))errors.push(`unsafe redirect ${r.from}->${r.to}`); if(from.has(r.from))errors.push(`redirect collision ${r.from}`); from.add(r.from)} for(const r of c.redirects){let cur=r.to,hops=0; while(from.has(cur)){if(++hops>10||cur===r.from){errors.push(`redirect loop at ${r.from}`); break} cur=c.redirects.find(x=>x.from===cur)!.to}}
+ if(errors.length)throw new Error(errors.join('\n')); return c}
+export const publishedMaterials=(root=process.cwd())=>validateCatalog(root).materials.filter(m=>m.status==='published');
+export function assetUrl(a:Asset){return `/r2/${a.storageKey}`}

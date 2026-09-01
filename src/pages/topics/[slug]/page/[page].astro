@@ -1,19 +1,4 @@
 ---
-import Base from '../../../../layouts/Base.astro';
-import { validateCatalog } from '../../../../lib/catalog.ts';
-export function getStaticPaths() {
-  const catalog = validateCatalog();
-  return catalog.topics.flatMap((topic) => {
-    const count = catalog.materials.filter((material) => material.status === 'published' && material.topicIds.includes(topic.id)).length;
-    return Array.from({ length: Math.max(1, Math.ceil(count / 6)) }, (_, index) => ({ params: { slug: topic.slug, page: String(index + 1) }, props: { topic, catalog, page: index + 1 } }));
-  });
-}
-const { topic, catalog, page } = Astro.props;
-const materials = catalog.materials.filter((material) => material.status === 'published' && material.topicIds.includes(topic.id));
-const entries = materials.slice((page - 1) * 6, page * 6);
+import Base from '../../../../layouts/Base.astro';import { validateCatalog } from '../../../../lib/catalog.js';const PER=6;export function getStaticPaths(){const c=validateCatalog();return c.topics.flatMap(t=>{const mats=c.materials.filter(m=>m.status==='published'&&m.topicIds.includes(t.id));const pages=Math.max(1,Math.ceil(mats.length/PER));return Array.from({length:pages},(_,i)=>({params:{slug:t.slug,page:String(i+1)},props:{t,c,page:i+1}}))})}const {t,c,page}=Astro.props;const mats=c.materials.filter(m=>m.status==='published'&&m.topicIds.includes(t.id));const slice=mats.slice((page-1)*PER,page*PER);
 ---
-<Base title={`${topic.title} materials — FreeEDU`} description={topic.description}>
-  <h1>{topic.title}</h1><p>{topic.description}</p>
-  {entries.length ? <div class="grid">{entries.map((material) => <article class="card"><h2><a href={`/materials/${material.slug}`}>{material.title}</a></h2><p>{material.description}</p></article>)}</div> : <p class="empty">No published materials are available for this topic yet.</p>}
-  <nav aria-label="Topic pages">{page > 1 && <a href={`/topics/${topic.slug}/page/${page - 1}`}>Previous</a>} {materials.length > page * 6 && <a href={`/topics/${topic.slug}/page/${page + 1}`}>Next</a>}</nav>
-</Base>
+<Base title={`${t.title} materials — FreeEDU`} description={t.description}><h1>{t.title}</h1><p>{t.description}</p>{slice.length?<div class="grid">{slice.map(m=><article class="card"><h2><a href={`/materials/${m.slug}`}>{m.title}</a></h2><p>{m.description}</p></article>)}</div>:<p class="empty">No published materials are available for this topic yet.</p>}<p>{page>1&&<a href={`/topics/${t.slug}/page/${page-1}`}>Previous</a>} {mats.length>page*PER&&<a href={`/topics/${t.slug}/page/${page+1}`}>Next</a>}</p></Base>
